@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, redirect, url_for, request, flash
+from flask import Flask, redirect, url_for, request, flash, render_template_string
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
 from wtforms import StringField, TextAreaField, SubmitField, SelectField, PasswordField
@@ -6,34 +6,139 @@ from wtforms.validators import DataRequired, EqualTo
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin, login_user, LoginManager, login_required, logout_user, current_user
+# Hapus import os
+# Hapus import eventlet / socketio
 
 # ---------------------------------------------
-# 1. INICIALISASI & KONFIGURASI (FINAL VERCEL)
+# 1. INICIALISASI & KONFIGURASI 
 # ---------------------------------------------
 app = Flask(__name__)
 
-# MENGGUNAKAN DB DALAM MEMORI (TIDAK PERMANEN!)
+# Menggunakan DB DALAM MEMORI (PALING AMAN DARI CRASH VERCEL)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:' 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# MENGGUNAKAN HARDCODED SECRET KEY (MENGHINDARI os.environ CRASH)
-app.config['SECRET_KEY'] = 'kunci_rahasia_sangat_aman_tbj_multi_user_final' 
+app.config['SECRET_KEY'] = 'kunci_rahasia_paling_stabil_final' 
 
 db = SQLAlchemy(app)
-JUDUL_SITUS = 'Berita Terbaru Oleh TBJ (Vercel Edition Final)'
+JUDUL_SITUS = 'Berita Terbaru - Vercel Stabil'
 
 # Konfigurasi Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login' 
-login_manager.login_message = "Harap masuk untuk mengakses halaman ini."
+# ... (Sisanya dari load_user) ...
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+# ---------------------------------------------
+# 2. MODEL DATABASE & FORMS
+# HARUS DIDEFINISIKAN SEBELUM db.create_all()
 # ---------------------------------------------
 
+class User(db.Model, UserMixin):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(20), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False) 
+    articles = db.relationship('Artikel', backref='author', lazy=True)
+    # ... (set_password, check_password methods) ...
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
 
+class Artikel(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    judul = db.Column(db.String(150), nullable=False)
+    ringkasan = db.Column(db.Text, nullable=False)
+    isi = db.Column(db.Text, nullable=False)
+    kategori = db.Column(db.String(50), default='Umum')
+    tanggal = db.Column(db.String(20), default=lambda: datetime.now().strftime("%d %B %Y %H:%M"))
+    gambar_url = db.Column(db.String(250), default='')
+    thumbnail_url = db.Column(db.String(250), default='') 
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    status = db.Column(db.String(10), default='Pending') 
+    alasan_moderasi = db.Column(db.Text, default='') 
+
+# ... (Definisi semua Forms: RegistrationForm, LoginForm, ArtikelForm, ModerasiForm) ...
+
+class RegistrationForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    confirm_password = PasswordField('Konfirmasi Password', validators=[DataRequired(), EqualTo('password', message='Password harus sama.')])
+    submit = SubmitField('Daftar')
+
+class LoginForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    submit = SubmitField('Masuk')
+
+class ArtikelForm(FlaskForm):
+    judul = StringField('Judul Berita', validators=[DataRequired()])
+    kategori = StringField('Kategori', default='Teknologi')
+    ringkasan = TextAreaField('Ringkasan (Pendek)', validators=[DataRequired()])
+    isi = TextAreaField('Isi Lengkap Berita', validators=[DataRequired()])
+    gambar_url = StringField('URL Gambar Utama (Opsional)')
+    thumbnail_url = StringField('URL Gambar Thumbnail (Opsional)') 
+    submit = SubmitField('Simpan Berita')
+
+class ModerasiForm(FlaskForm):
+    status = SelectField('Status', choices=[('Disetujui', 'Disetujui'), ('Ditolak', 'Ditolak')], validators=[DataRequired()])
+    alasan = TextAreaField('Alasan (Wajib jika Ditolak/Opsional)')
+    submit = SubmitField('Submit Moderasi')
+
+# ---------------------------------------------
+# 3. INISIALISASI DB: DITEMPATKAN DI SINI AGAR MODEL SUDAH ADA
+# ---------------------------------------------
+with app.app_context():
+    db.create_all()
+
+# ---------------------------------------------
+# 4. TEMPLATE HTML (Ganti dengan string HTML Anda)
+# ---------------------------------------------
+# Anda HARUS MENGGANTI ini dengan string HTML penuh yang saya berikan sebelumnya.
+INDEX_TEMPLATE = "<h1>Aplikasi Berhasil di-Deploy! (Template Index Placeholder)</h1>" 
+LOGIN_TEMPLATE = "<h1>Login</h1>"
+REGISTER_TEMPLATE = "<h1>Register</h1>"
+ADMIN_INDEX_TEMPLATE = "<h1>Admin Dashboard</h1>"
+# ... (Lainnya) ...
+
+# ---------------------------------------------
+# 5. RUTE APLIKASI
+# ---------------------------------------------
+# ... (Masukkan kembali semua rute Anda, misalnya: home, register, login, admin_index, etc.) ...
+
+@app.route('/')
+def home():
+    articles = Artikel.query.filter_by(status='Disetujui').order_by(Artikel.id.desc()).all()
+    # Pastikan Anda menggunakan render_template_string di sini
+    return render_template_string(INDEX_TEMPLATE, berita=articles, judul_situs=JUDUL_SITUS)
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    form = RegistrationForm()
+    # ... (Logic register) ...
+    # Pastikan di akhir menggunakan:
+    return render_template_string(REGISTER_TEMPLATE, form=form, judul_situs=JUDUL_SITUS)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    form = LoginForm()
+    # ... (Logic login) ...
+    # Pastikan di akhir menggunakan:
+    return render_template_string(LOGIN_TEMPLATE, form=form, judul_situs=JUDUL_SITUS)
+
+# ... (Semua Rute Anda yang lain) ...
+# Contoh:
+# @app.route('/admin')
+# @login_required
+# def admin_index():
+#    # ... (Logic admin) ...
+#    return render_template_string(ADMIN_INDEX_TEMPLATE, ...)
+
+# Vercel akan mengimpor objek 'app' secara langsung dari file ini.
 # ---------------------------------------------
 # 2. MODEL DATABASE & FORMS
 # ---------------------------------------------

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h3>Dashboard Admin</h3>
+<a href="{{ url_for('tambah') }}" class="btn btn-primary mb-3">+ Tambah Berita</a>
+
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>Judul</th>
+      <th>Penulis</th>
+      <th>Aksi</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for b in berita %}
+    <tr>
+      <td>{{ b.judul }}</td>
+      <td>{{ b.penulis }}</td>
+      <td>
+        <a href="{{ url_for('hapus', id=b.id) }}" class="btn btn-danger btn-sm">Hapus</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

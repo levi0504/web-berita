@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h3 class="mb-4">Berita Terbaru</h3>
+
+<form method="get" class="mb-4 d-flex">
+  <input type="text" name="q" class="form-control me-2" placeholder="Cari berita..." value="{{ q }}">
+  <button class="btn btn-primary">Cari</button>
+</form>
+
+<div class="row">
+  {% for b in berita %}
+  <div class="col-md-4 mb-4">
+    <div class="card h-100 shadow-sm">
+      {% if b.gambar %}
+        <img src="{{ url_for('static', filename='uploads/' + b.gambar) }}" class="card-img-top" alt="gambar">
+      {% endif %}
+      <div class="card-body">
+        <h5 class="card-title">{{ b.judul }}</h5>
+        <p class="card-text text-muted small">Penulis: {{ b.penulis }}</p>
+        <a href="{{ url_for('detail', id=b.id) }}" class="btn btn-outline-primary btn-sm">Baca Selengkapnya</a>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <p class="text-muted">Belum ada berita.</p>
+  {% endfor %}
+</div>
+{% endblock %}

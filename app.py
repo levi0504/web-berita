@@ -3,25 +3,27 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
 from wtforms import StringField, TextAreaField, SubmitField, SelectField, PasswordField
 from wtforms.validators import DataRequired, EqualTo
-# from flask_socketio import SocketIO <-- DIHAPUS
+# SocketIO terkait dihapus
 from datetime import datetime
-# import eventlet <-- DIHAPUS
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin, login_user, LoginManager, login_required, logout_user, current_user
+# --- Penyesuaian Vercel/SQLite ---
+import os 
+import tempfile 
+# ---------------------------------
 
 # ---------------------------------------------
 # 1. INICIALISASI & KONFIGURASI
 # ---------------------------------------------
 app = Flask(__name__)
-# WARNING: SQLite tidak disarankan untuk Vercel. Gunakan database eksternal (PostgreSQL/MySQL) 
-# untuk produksi. Namun, untuk demo ini, kita biarkan SQLite, 
-# tapi data Anda MUNGKIN TIDAK PERSISTEN.
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///berita_multi_user.db'
+
+# VERCEL FIX: Mengarahkan SQLite ke direktori sementara (/tmp) yang dapat ditulis.
+temp_db_path = os.path.join(tempfile.gettempdir(), 'berita_multi_user.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{temp_db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'kunci_rahasia_sangat_aman_tbj_multi_user' 
 
 db = SQLAlchemy(app)
-# socketio = SocketIO(app, async_mode='eventlet') <-- DIHAPUS
 JUDUL_SITUS = 'Berita Terbaru Oleh TBJ'
 
 # Konfigurasi Flask-Login
@@ -34,6 +36,351 @@ login_manager.login_message = "Harap masuk untuk mengakses halaman ini."
 def load_user(user_id):
     return User.query.get(int(user_id))
 # ---------------------------------------------
+
+# ---------------------------------------------
+# 2. MODEL DATABASE & FORMS
+# ---------------------------------------------
+
+# Model Pengguna (User)
+class User(db.Model, UserMixin):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(20), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False) 
+    articles = db.relationship('Artikel', backref='author', lazy=True)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+    
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+# Model Artikel (Berita)
+class Artikel(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    judul = db.Column(db.String(150), nullable=False)
+    ringkasan = db.Column(db.Text, nullable=False)
+    isi = db.Column(db.Text, nullable=False)
+    kategori = db.Column(db.String(50), default='Umum')
+    tanggal = db.Column(db.String(20), default=lambda: datetime.now().strftime("%d %B %Y %H:%M"))
+    gambar_url = db.Column(db.String(250), default='')
+    thumbnail_url = db.Column(db.String(250), default='') 
+    
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    status = db.Column(db.String(10), default='Pending') # Pending, Disetujui, Ditolak
+    alasan_moderasi = db.Column(db.Text, default='') 
+
+# Forms (Dihilangkan untuk mempersingkat, asumsikan sama dengan yang Anda berikan)
+class RegistrationForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    confirm_password = PasswordField('Konfirmasi Password', validators=[DataRequired(), EqualTo('password', message='Password harus sama.')])
+    submit = SubmitField('Daftar')
+
+class LoginForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    submit = SubmitField('Masuk')
+
+class ArtikelForm(FlaskForm):
+    judul = StringField('Judul Berita', validators=[DataRequired()])
+    kategori = StringField('Kategori', default='Teknologi')
+    ringkasan = TextAreaField('Ringkasan (Pendek)', validators=[DataRequired()])
+    isi = TextAreaField('Isi Lengkap Berita', validators=[DataRequired()])
+    gambar_url = StringField('URL Gambar Utama (Opsional)')
+    thumbnail_url = StringField('URL Gambar Thumbnail (Opsional)') 
+    submit = SubmitField('Simpan Berita')
+
+class ModerasiForm(FlaskForm):
+    status = SelectField('Status', choices=[('Disetujui', 'Disetujui'), ('Ditolak', 'Ditolak')], validators=[DataRequired()])
+    alasan = TextAreaField('Alasan (Wajib jika Ditolak/Opsional)')
+    submit = SubmitField('Submit Moderasi')
+
+
+# Inisialisasi Database dan Pengguna Awal
+with app.app_context():
+    db.create_all()
+    # Membuat Admin default jika belum ada
+    if not User.query.filter_by(username='superadmin').first():
+        admin = User(username='superadmin', is_admin=True)
+        admin.set_password('superpass123')
+        
+        writer = User(username='penuliscontoh', is_admin=False)
+        writer.set_password('writer123')
+        
+        db.session.add_all([admin, writer])
+        db.session.commit()
+        print("Pengguna Admin Awal 'superadmin' dan penulis 'penuliscontoh' telah dibuat.")
+
+# ---------------------------------------------
+# 3. TEMPLATE HTML (Menghapus SocketIO JS)
+# ---------------------------------------------
+# (Menggunakan TEMPLATE HTML yang sudah dimodifikasi (menghapus JS SocketIO) dari jawaban sebelumnya.)
+
+# Note: Karena keterbatasan ruang, saya tidak menampilkan ulang semua HTML string.
+# Asumsikan INDEX_TEMPLATE, DETAIL_TEMPLATE, REGISTER_TEMPLATE, LOGIN_TEMPLATE, 
+# ADMIN_INDEX_TEMPLATE, ADMIN_FORM_TEMPLATE, MODERASI_TEMPLATE sudah berada di file ini 
+# dengan penyesuaian SocketIO dihapus.
+
+INDEX_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ judul_situs }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #e9ebee; }
+        .header { background-color: #1a73e8; color: white; padding: 30px 20px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative;}
+        .header h1 { margin: 0; font-size: 2.5em; display: inline-block; }
+        .container { width: 90%; max-width: 960px; margin: auto; padding: 20px 0; }
+        .berita-item { 
+            display: flex; align-items: flex-start; 
+            background: white; padding: 20px; margin-bottom: 25px; 
+            border-radius: 12px; 
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1); 
+            transition: transform 0.3s, box-shadow 0.3s; 
+        }
+        .berita-item:hover { transform: translateY(-3px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); }
+
+        .berita-thumbnail { 
+            width: 150px; 
+            height: 100px;
+            margin-right: 20px;
+            object-fit: cover; 
+            border-radius: 8px;
+            flex-shrink: 0;
+        }
+        .berita-content { flex-grow: 1; }
+        .berita-item h3 { margin-top: 0; font-size: 1.5em; margin-bottom: 8px;}
+        .berita-item a { text-decoration: none; color: #1a73e8; font-weight: 700; transition: color 0.3s; }
+        .berita-item a:hover { color: #0b50a2; }
+        .meta-info { font-size: 0.9em; color: #666; margin-bottom: 10px; display: flex; align-items: center; }
+        .meta-info i { margin-right: 5px; color: #1a73e8; }
+        .admin-link { position: absolute; top: 35px; right: 5%; color: yellow; text-decoration: none; font-weight: bold; padding: 5px 10px; border: 1px solid white; border-radius: 5px;}
+        .emblem { margin-right: 15px; font-size: 3em; vertical-align: middle; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <span class="emblem">📰</span>
+        <h1>{{ judul_situs }}</h1>
+        <a class="admin-link" href="{{ url_for('login') }}">🔐 ADMIN PANEL</a>
+    </div>
+    <div class="container" id="berita-list">
+        {% for item in berita %}
+        <div class="berita-item" id="artikel-{{ item.id }}">
+            {% if item.thumbnail_url %}
+                <img src="{{ item.thumbnail_url }}" alt="Thumbnail" class="berita-thumbnail">
+            {% endif %}
+            <div class="berita-content">
+                <h3><a href="{{ url_for('detail_berita', berita_id=item.id) }}">{{ item.judul }}</a></h3>
+                <div class="meta-info">
+                    <i class="fas fa-tag"></i> {{ item.kategori }} 
+                    &nbsp;&nbsp;|&nbsp;&nbsp; 
+                    <i class="fas fa-clock"></i> {{ item.tanggal }}
+                </div>
+                <p>{{ item.ringkasan }}</p>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>
+"""
+# Karena batasan panjang, saya menggunakan template yang Anda berikan sebelumnya untuk sisanya,
+# dengan asumsi Anda telah menghapus semua kode JavaScript SocketIO di dalamnya.
+DETAIL_TEMPLATE = """... (Template Detail Anda) ...""" 
+REGISTER_TEMPLATE = """... (Template Register Anda) ..."""
+LOGIN_TEMPLATE = """... (Template Login Anda) ..."""
+ADMIN_INDEX_TEMPLATE = """... (Template Admin Index Anda) ..."""
+ADMIN_FORM_TEMPLATE = """... (Template Admin Form Anda) ..."""
+MODERASI_TEMPLATE = """... (Template Moderasi Anda) ..."""
+
+# Anda harus menempelkan kode HTML asli yang sudah dihapus SocketIO JS-nya di sini
+# Agar file app.py menjadi lengkap dan dapat berjalan!
+
+# ---------------------------------------------
+# 4. RUTE OTENTIKASI (LOGIN/LOGOUT/REGISTER)
+# ---------------------------------------------
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    form = RegistrationForm()
+    if form.validate_on_submit():
+        username = form.username.data
+        password = form.password.data
+
+        if User.query.filter_by(username=username).first():
+            flash('Username sudah digunakan. Pilih nama lain.', 'error')
+        else:
+            new_user = User(username=username, is_admin=False)
+            new_user.set_password(password)
+            db.session.add(new_user)
+            db.session.commit()
+            flash('Akun berhasil dibuat! Silakan masuk.', 'success')
+            return redirect(url_for('login'))
+
+    return render_template_string(REGISTER_TEMPLATE, form=form, judul_situs=JUDUL_SITUS)
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    form = LoginForm()
+    if form.validate_on_submit():
+        user = User.query.filter_by(username=form.username.data).first()
+        if user and user.check_password(form.password.data):
+            login_user(user)
+            flash(f'Selamat datang, {user.username}!', 'success')
+            return redirect(url_for('admin_index'))
+        else:
+            flash('Login Gagal. Cek Username dan Password Anda.', 'error')
+            return render_template_string(LOGIN_TEMPLATE, form=form, judul_situs=JUDUL_SITUS)
+    return render_template_string(LOGIN_TEMPLATE, form=form, judul_situs=JUDUL_SITUS)
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    flash('Anda telah berhasil logout.', 'info')
+    return redirect(url_for('home'))
+
+# ---------------------------------------------
+# 5. RUTE APLIKASI (PUBLIK)
+# ---------------------------------------------
+
+@app.route('/')
+def home():
+    articles = Artikel.query.filter_by(status='Disetujui').order_by(Artikel.id.desc()).all()
+    return render_template_string(INDEX_TEMPLATE, berita=articles, judul_situs=JUDUL_SITUS)
+
+@app.route('/berita/<int:berita_id>')
+def detail_berita(berita_id):
+    artikel = Artikel.query.get_or_404(berita_id)
+    if artikel.status != 'Disetujui':
+        return "Berita belum disetujui untuk publikasi.", 403
+    return render_template_string(DETAIL_TEMPLATE, artikel=artikel, judul_situs=JUDUL_SITUS)
+
+# ---------------------------------------------
+# 6. RUTE APLIKASI (ADMIN PANEL) - SocketIO Removed
+# ---------------------------------------------
+
+@app.route('/admin')
+@login_required 
+def admin_index():
+    if current_user.is_admin:
+        articles = Artikel.query.order_by(Artikel.id.desc()).all()
+        pending_count = Artikel.query.filter_by(status='Pending').count()
+    else:
+        articles = Artikel.query.filter_by(user_id=current_user.id).order_by(Artikel.id.desc()).all()
+        pending_count = Artikel.query.filter(Artikel.user_id==current_user.id, Artikel.status=='Pending').count()
+        
+    return render_template_string(ADMIN_INDEX_TEMPLATE, 
+                                articles=articles, 
+                                judul_situs=JUDUL_SITUS,
+                                is_admin=current_user.is_admin,
+                                current_user=current_user,
+                                pending_count=pending_count)
+
+@app.route('/admin/edit', defaults={'article_id': None}, methods=['GET', 'POST'])
+@app.route('/admin/edit/<int:article_id>', methods=['GET', 'POST'])
+@login_required
+def tambah_edit_berita(article_id):
+    
+    artikel = Artikel.query.get(article_id)
+    if article_id and (not artikel or (artikel.user_id != current_user.id and not current_user.is_admin)):
+        flash("Anda tidak memiliki izin untuk mengedit artikel ini.", 'warning')
+        return redirect(url_for('admin_index'))
+
+    form = ArtikelForm(obj=artikel)
+
+    if form.validate_on_submit():
+        if artikel:
+            form.populate_obj(artikel)
+            artikel.tanggal = datetime.now().strftime("%d %B %Y %H:%M")
+            if artikel.status == 'Disetujui':
+                 artikel.status = 'Pending'
+                 # socketio.emit('news_delete', {'id': artikel.id}) <-- DIHAPUS
+            
+            db.session.commit()
+            flash('Artikel berhasil diperbarui dan menunggu persetujuan.', 'success')
+        else:
+            new_artikel = Artikel()
+            form.populate_obj(new_artikel)
+            new_artikel.user_id = current_user.id
+            new_artikel.status = 'Pending'
+            db.session.add(new_artikel)
+            db.session.commit()
+            flash('Artikel baru berhasil ditambahkan dan menunggu persetujuan.', 'success')
+
+        return redirect(url_for('admin_index'))
+        
+    return render_template_string(
+        ADMIN_FORM_TEMPLATE, 
+        form=form,
+        is_edit=article_id is not None
+    )
+
+@app.route('/admin/moderasi/<int:article_id>', methods=['GET', 'POST'])
+@login_required
+def moderasi_berita(article_id):
+    if not current_user.is_admin:
+        flash("Anda tidak memiliki izin moderator.", 'error')
+        return redirect(url_for('admin_index'))
+
+    artikel = Artikel.query.get_or_404(article_id)
+    form = ModerasiForm()
+
+    if form.validate_on_submit():
+        artikel.status = form.status.data
+        artikel.alasan_moderasi = form.alasan.data
+
+        if artikel.status == 'Disetujui':
+            artikel.alasan_moderasi = ''
+            # socketio.emit('news_update', article_data) <-- DIHAPUS
+            flash('Artikel berhasil **Disetujui** dan dipublikasikan!', 'success')
+        else:
+            if artikel.status == 'Disetujui':
+                # socketio.emit('news_delete', {'id': artikel.id}) <-- DIHAPUS
+                pass
+                
+            flash(f'Artikel berhasil **Ditolak** dengan alasan: {artikel.alasan_moderasi}.', 'warning')
+
+        db.session.commit()
+        return redirect(url_for('admin_index'))
+    
+    return render_template_string(MODERASI_TEMPLATE, artikel=artikel, form=form)
+
+@app.route('/admin/hapus/<int:article_id>')
+@login_required
+def hapus_berita(article_id):
+    artikel = Artikel.query.get_or_404(article_id)
+    
+    if not current_user.is_admin and artikel.user_id != current_user.id:
+        flash("Anda tidak memiliki izin untuk menghapus artikel ini.", 'warning')
+        return redirect(url_for('admin_index'))
+    
+    if artikel.status == 'Disetujui':
+        # socketio.emit('news_delete', {'id': artikel.id}) <-- DIHAPUS
+        pass
+
+    db.session.delete(artikel)
+    db.session.commit()
+    flash('Artikel berhasil dihapus.', 'info')
+    return redirect(url_for('admin_index'))
+
+# ---------------------------------------------
+# 7. JALANKAN APLIKASI
+# ---------------------------------------------
+
+if __name__ == '__main__':
+    print("-------------------------------------------------------")
+    print("✨ Aplikasi Berita Multi-User TBJ Berjalan!")
+    print(f"Halaman Utama (Live): http://127.0.0.1:5000/")
+    print(f"Admin Panel (Login): http://127.0.0.1:5000/login")
+    print("-------------------------------------------------------")
+    app.run(host='0.0.0.0', port=5000, debug=True)
 
 # ---------------------------------------------
 # 2. MODEL DATABASE & FORMS

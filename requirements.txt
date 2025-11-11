@@ -1,7 +1,3 @@
 Flask
-Flask-SQLA1chemy
-Flask-WTF
-Flask-Login
-Werkzeug
-itsdangerous
-Jinja2
+requests
+beautifulsoup4 

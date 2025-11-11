@@ -1,40 +1,20 @@
-from flask import Flask, render_template_string, redirect, url_for, request, flash
-from flask_sqlalchemy import SQLAlchemy
-from flask_wtf import FlaskForm
-from wtforms import StringField, TextAreaField, SubmitField, SelectField, PasswordField
-from wtforms.validators import DataRequired, EqualTo
-from flask_socketio import SocketIO
-from datetime import datetime
-import eventlet
-from werkzeug.security import generate_password_hash, check_password_hash
-from flask_login import UserMixin, login_user, LoginManager, login_required, logout_user, current_user
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 
-# ---------------------------------------------
-# 1. INICIALISASI & KONFIGURASI
-# ---------------------------------------------
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///berita_multi_user.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'kunci_rahasia_sangat_aman_tbj_multi_user' 
+app = FastAPI()
+templates = Jinja2Templates(directory="templates")
 
-db = SQLAlchemy(app)
-socketio = SocketIO(app, async_mode='eventlet') 
-JUDUL_SITUS = 'Berita Terbaru Oleh TBJ'
+# Data berita contoh
+berita_data = [
+    {"judul": "Pemerintah Umumkan Kebijakan Baru", "isi": "Kebijakan terbaru diumumkan untuk meningkatkan ekonomi nasional."},
+    {"judul": "Timnas Indonesia Menang Lagi!", "isi": "Timnas Indonesia berhasil menang melawan Malaysia dengan skor 3-1."},
+    {"judul": "Teknologi AI Makin Canggih", "isi": "Perkembangan AI membuat banyak industri berubah secara signifikan."},
+]
 
-# Konfigurasi Flask-Login
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login' 
-login_manager.login_message = "Harap masuk untuk mengakses halaman ini."
-
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
-# ---------------------------------------------
-
-# ---------------------------------------------
-# 2. MODEL DATABASE & FORMS
-# ---------------------------------------------
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request, "berita": berita_data})# ---------------------------------------------
 
 # Model Pengguna (User)
 class User(db.Model, UserMixin):

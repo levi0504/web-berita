@@ -3,3 +3,5 @@ Flask-SQLA1chemy
 Flask-WTF
 Flask-Login
 Werkzeug
+itsdangerous
+Jinja2

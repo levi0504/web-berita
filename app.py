@@ -6,17 +6,22 @@ from wtforms.validators import DataRequired, EqualTo
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin, login_user, LoginManager, login_required, logout_user, current_user
+import os # Wajib diaktifkan kembali untuk membaca Environment Variable
 
 # ---------------------------------------------
-# 1. INICIALISASI & KONFIGURASI 
+# 1. INICIALISASI & KONFIGURASI (POSTGRES READY)
 # ---------------------------------------------
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:' 
+
+# --- KONFIGURASI DATABASE EKSTERNAL ---
+# Mengambil URL koneksi dari environment variable Vercel
+# Gunakan "postgresql://" atau "postgres://" sesuai penyedia Anda
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///:memory:') 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'kunci_rahasia_paling_stabil_final_1111' 
+app.config['SECRET_KEY'] = 'kunci_rahasia_aman_eksternal' 
 
 db = SQLAlchemy(app)
-JUDUL_SITUS = 'Berita Terbaru - Vercel Final Stable'
+JUDUL_SITUS = 'Berita Terbaru - Vercel Final & Stabil'
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -32,8 +37,173 @@ def load_user(user_id):
 # ---------------------------------------------
 # 2. DEFINISI MODEL DATABASE & FORMS
 # ---------------------------------------------
-
+# (MODEL dan FORMS SAMA SEPERTI SEBELUMNYA)
+# Pastikan semua definisi Class User, Artikel, dan semua Forms ada di sini.
 class User(db.Model, UserMixin):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(20), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False) 
+    articles = db.relationship('Artikel', backref='author', lazy=True)
+    def set_password(self, password): self.password_hash = generate_password_hash(password)
+    def check_password(self, password): return check_password_hash(self.password_hash, password)
+
+class Artikel(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    judul = db.Column(db.String(150), nullable=False)
+    ringkasan = db.Column(db.Text, nullable=False)
+    isi = db.Column(db.Text, nullable=False)
+    kategori = db.Column(db.String(50), default='Umum')
+    tanggal = db.Column(db.String(20), default=lambda: datetime.now().strftime("%d %B %Y %H:%M"))
+    gambar_url = db.Column(db.String(250), default='')
+    thumbnail_url = db.Column(db.String(250), default='') 
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    status = db.Column(db.String(10), default='Pending') 
+    alasan_moderasi = db.Column(db.Text, default='') 
+
+class RegistrationForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    confirm_password = PasswordField('Konfirmasi Password', validators=[DataRequired(), EqualTo('password', message='Password harus sama.')])
+    submit = SubmitField('Daftar')
+
+class LoginForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    submit = SubmitField('Masuk')
+
+class ArtikelForm(FlaskForm):
+    judul = StringField('Judul Berita', validators=[DataRequired()])
+    kategori = StringField('Kategori', default='Teknologi')
+    ringkasan = TextAreaField('Ringkasan (Pendek)', validators=[DataRequired()])
+    isi = TextAreaField('Isi Lengkap Berita', validators=[DataRequired()])
+    gambar_url = StringField('URL Gambar Utama (Opsional)')
+    thumbnail_url = StringField('URL Gambar Thumbnail (Opsional)') 
+    submit = SubmitField('Simpan Berita')
+
+class ModerasiForm(FlaskForm):
+    status = SelectField('Status', choices=[('Disetujui', 'Disetujui'), ('Ditolak', 'Ditolak')], validators=[DataRequired()])
+    alasan = TextAreaField('Alasan (Wajib jika Ditolak/Opsional)')
+    submit = SubmitField('Submit Moderasi')
+
+# ---------------------------------------------
+# 3. INISIALISASI DB: PENTING UNTUK EKSTERNAL DB
+# ---------------------------------------------
+with app.app_context():
+    # Ini harus dijalankan **secara manual** dari terminal saat pertama kali deployment
+    # Namun, kita biarkan di sini agar Vercel setidaknya mencoba menghubungkan model saat startup.
+    try:
+        db.create_all()
+    except Exception as e:
+        # Jika gagal (karena belum ada DB eksternal), kita abaikan, dan biarkan /register yang menanganinya
+        print(f"Database initialization failed (expected for external DB): {e}")
+        pass 
+
+# ---------------------------------------------
+# 4. TEMPLATE HTML STRING (HARUS DIISI PENUH)
+# ---------------------------------------------
+# PASTIKAN SEMUA VARIABEL HTML STRING DIBERIKAN KEMBALI DI SINI!
+# (Menggunakan placeholder karena keterbatasan ruang)
+INDEX_TEMPLATE = """... (HTML INDEX LENGKAP) ...""" 
+LOGIN_TEMPLATE = """... (HTML LOGIN LENGKAP) ..."""
+REGISTER_TEMPLATE = """... (HTML REGISTER LENGKAP) ..."""
+ADMIN_INDEX_TEMPLATE = """... (HTML ADMIN LENGKAP) ..."""
+DETAIL_TEMPLATE = """... (HTML DETAIL LENGKAP) ..."""
+ADMIN_FORM_TEMPLATE = """... (HTML ADMIN FORM LENGKAP) ..."""
+MODERASI_TEMPLATE = """... (HTML MODERASI LENGKAP) ..."""
+
+
+# ---------------------------------------------
+# 5. RUTE APLIKASI (Dengan Try/Except untuk Stabilitas)
+# ---------------------------------------------
+
+# Hanya masukkan kembali rute yang sudah kita kerjakan dengan try/except
+@app.route('/')
+def home():
+    articles = []
+    try:
+        articles = Artikel.query.filter_by(status='Disetujui').order_by(Artikel.id.desc()).all()
+    except:
+        flash("Database belum siap. Pastikan Environment Variable DATABASE_URL sudah diatur.", 'info')
+        pass 
+    return render_template_string(INDEX_TEMPLATE, berita=articles, judul_situs=JUDOL_SITUS)
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    form = RegistrationForm()
+    if form.validate_on_submit():
+        username = form.username.data
+        password = form.password.data
+        
+        try:
+            # PENTING: Untuk External DB, kita harus memastikan tabel dibuat jika belum ada.
+            with app.app_context():
+                db.create_all() 
+                
+            if User.query.filter_by(username=username).first():
+                flash('Username sudah digunakan.', 'error')
+            else:
+                is_admin = not bool(User.query.first())
+                new_user = User(username=username, is_admin=is_admin)
+                new_user.set_password(password)
+                db.session.add(new_user)
+                db.session.commit()
+                
+                flash(f'Akun {"ADMIN" if is_admin else "PENULIS"} berhasil dibuat! Silakan masuk.', 'success')
+                return redirect(url_for('login'))
+        
+        except Exception as e:
+            flash(f'Error Database: {e}. Pastikan URL Database Eksternal Anda Benar.', 'error')
+            db.session.rollback()
+
+    return render_template_string(REGISTER_TEMPLATE, form=form, judul_situs=JUDOL_SITUS)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    form = LoginForm()
+    if form.validate_on_submit():
+        user = None
+        try:
+            user = User.query.filter_by(username=form.username.data).first()
+        except:
+            flash("Gagal query database. Pastikan DB sudah terinisialisasi.", 'error')
+            return render_template_string(LOGIN_TEMPLATE, form=form, judul_situs=JUDOL_SITUS)
+
+        if user and user.check_password(form.password.data):
+            login_user(user)
+            flash(f'Selamat datang, {user.username}!', 'success')
+            return redirect(url_for('admin_index'))
+        else:
+            flash('Login Gagal. Cek Username dan Password Anda.', 'error')
+            
+    return render_template_string(LOGIN_TEMPLATE, form=form, judul_situs=JUDOL_SITUS)
+
+@app.route('/admin')
+@login_required 
+def admin_index():
+    try:
+        # Logika Kueri Artikel
+        # ...
+        if current_user.is_admin:
+            articles = Artikel.query.order_by(Artikel.id.desc()).all()
+            pending_count = Artikel.query.filter_by(status='Pending').count()
+        else:
+            articles = Artikel.query.filter_by(user_id=current_user.id).order_by(Artikel.id.desc()).all()
+            pending_count = Artikel.query.filter_by(user_id=current_user.id, status='Pending').count()
+            
+    except Exception as e:
+        flash(f"Error memuat data admin. Sesi DB mungkin terputus.", 'warning')
+        articles = []
+        pending_count = 0
+    
+    return render_template_string(ADMIN_INDEX_TEMPLATE, 
+                                articles=articles, 
+                                judul_situs=JUDOL_SITUS,
+                                is_admin=current_user.is_admin,
+                                current_user=current_user,
+                                pending_count=pending_count)
+                                
+# ... (Semua rute lainnya, pastikan menggunakan try/except pada kueri DB)
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(20), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)

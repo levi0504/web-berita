@@ -1,39 +1,23 @@
-from flask import Flask, render_template_string, redirect, url_for, request, flash
-from flask_sqlalchemy import SQLAlchemy
-from flask_wtf import FlaskForm
-from wtforms import StringField, TextAreaField, SubmitField, SelectField, PasswordField
-from wtforms.validators import DataRequired, EqualTo
-# SocketIO terkait dihapus
-from datetime import datetime
-from werkzeug.security import generate_password_hash, check_password_hash
-from flask_login import UserMixin, login_user, LoginManager, login_required, logout_user, current_user
-# --- Penyesuaian Vercel/SQLite ---
-import os 
-import tempfile 
-# ---------------------------------
+from flask import Flask, render_template
 
-# ---------------------------------------------
-# 1. INICIALISASI & KONFIGURASI
-# ---------------------------------------------
 app = Flask(__name__)
 
-# VERCEL FIX: Mengarahkan SQLite ke direktori sementara (/tmp) yang dapat ditulis.
-temp_db_path = os.path.join(tempfile.gettempdir(), 'berita_multi_user.db')
-app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{temp_db_path}'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'kunci_rahasia_sangat_aman_tbj_multi_user' 
+# Contoh data berita sederhana
+berita_list = [
+    {"judul": "Berita 1: Python Semakin Populer", "konten": "Python terus menjadi bahasa pemrograman favorit."},
+    {"judul": "Berita 2: Deployment ke Vercel Mudah", "konten": "Menggunakan Serverless Functions di Vercel sangat efisien."},
+    {"judul": "Berita 3: Django vs Flask", "konten": "Pilih Django untuk proyek besar, Flask untuk API kecil."},
+]
 
-db = SQLAlchemy(app)
-JUDUL_SITUS = 'Berita Terbaru Oleh TBJ'
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def home(path):
+    # Untuk news website, Anda akan mengambil data nyata di sini (mis. dari database/API)
+    return render_template('index.html', judul_situs="Situs Berita Python", berita=berita_list)
 
-# Konfigurasi Flask-Login
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login' 
-login_manager.login_message = "Harap masuk untuk mengakses halaman ini."
-
-@login_manager.user_loader
-def load_user(user_id):
+# Ini diperlukan untuk Vercel sebagai titik masuk (entry point)
+if __name__ == '__main__':
+    app.run(debug=True)
     return User.query.get(int(user_id))
 # ---------------------------------------------
 
